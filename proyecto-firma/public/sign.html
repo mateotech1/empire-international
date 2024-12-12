@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Firma del Documento</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f9;
+      color: #333;
+    }
+
+    header {
+      background-color: #4CAF50;
+      color: white;
+      padding: 20px 10px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 2rem;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 20px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    #canvasContainer {
+      position: relative;
+      margin: 20px auto;
+      width: 800px;
+      height: 1100px;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+    }
+
+    #pdfCanvas, #fieldsCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #fieldsCanvas {
+      pointer-events: auto;
+    }
+
+    button {
+      display: inline-block;
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 5px;
+      background-color: #4CAF50;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    #signatureModal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border: 2px solid #4CAF50;
+      border-radius: 10px;
+      z-index: 1000;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+      display: none;
+    }
+
+    #signatureModal canvas {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    #modalOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      display: none;
+    }
+
+    footer {
+      text-align: center;
+      margin: 20px 0;
+      font-size: 0.9rem;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Firma el Documento</h1>
+</header>
+
+<main>
+  <div id="canvasContainer">
+    <canvas id="pdfCanvas" width="800" height="1100"></canvas>
+    <canvas id="fieldsCanvas" width="800" height="1100"></canvas>
+  </div>
+  <button onclick="submitSignature()">
+    <i class="fas fa-file-signature"></i> Finalizar Firma
+  </button>
+</main>
+
+<!-- Modal para la firma -->
+<div id="modalOverlay"></div>
+<div id="signatureModal">
+  <h2><i class="fas fa-pen"></i> Firma aquí</h2>
+  <canvas id="signatureCanvas" width="400" height="200"></canvas>
+  <div style="text-align: center; margin-top: 10px;">
+    <button onclick="saveSignature()">Guardar Firma</button>
+    <button onclick="closeSignatureModal()">Cancelar</button>
+  </div>
+</div>
+
+<footer>
+  &copy; 2024 Firma Digital. Todos los derechos reservados.
+</footer>
+
+<script>
+  const pdfCanvas = document.getElementById('pdfCanvas');
+  const pdfCtx = pdfCanvas.getContext('2d');
+  const fieldsCanvas = document.getElementById('fieldsCanvas');
+  const fieldsCtx = fieldsCanvas.getContext('2d');
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const pdfPath = urlParams.get('file');
+  const fieldsStr = urlParams.get('fields');
+  let fieldsData = [];
+  let fieldSignatures = {};
+
+  const modalOverlay = document.getElementById('modalOverlay');
+  const signatureModal = document.getElementById('signatureModal');
+  const signatureCanvas = document.getElementById('signatureCanvas');
+  const signaturePad = new SignaturePad(signatureCanvas);
+
+  if (fieldsStr) {
+    fieldsData = JSON.parse(decodeURIComponent(fieldsStr));
+  }
+
+  async function renderPDF(pdfPath) {
+    const loadingTask = pdfjsLib.getDocument(`/uploads/${pdfPath}`);
+    const pdfDoc = await loadingTask.promise;
+    const page = await pdfDoc.getPage(1);
+    const viewport = page.getViewport({ scale: 1.5 });
+
+    pdfCanvas.width = viewport.width;
+    pdfCanvas.height = viewport.height;
+    fieldsCanvas.width = viewport.width;
+    fieldsCanvas.height = viewport.height;
+
+    await page.render({ canvasContext: pdfCtx, viewport: viewport });
+    drawFields(fieldsData);
+  }
+
+  function drawFields(fields) {
+    fieldsCtx.clearRect(0, 0, fieldsCanvas.width, fieldsCanvas.height);
+
+    fields.forEach(field => {
+      fieldsCtx.fillStyle = 'rgba(0,0,255,0.3)';
+      fieldsCtx.fillRect(field.x, field.y, field.width, field.height);
+
+      fieldsCtx.strokeStyle = 'red';
+      fieldsCtx.lineWidth = 2;
+      fieldsCtx.strokeRect(field.x, field.y, field.width, field.height);
+    });
+  }
+
+  fieldsCanvas.addEventListener('click', (e) => {
+    const rect = fieldsCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const field = fieldsData.find(f => x >= f.x && x <= f.x + f.width &&
+                                       y >= f.y && y <= f.y + f.height);
+
+    if (field) {
+      openSignatureModal(field);
+    }
+  });
+
+  function openSignatureModal(field) {
+    currentField = field;
+    signaturePad.clear();
+    signatureModal.style.display = 'block';
+    modalOverlay.style.display = 'block';
+  }
+
+  function closeSignatureModal() {
+    signatureModal.style.display = 'none';
+    modalOverlay.style.display = 'none';
+  }
+
+  function saveSignature() {
+    if (signaturePad.isEmpty()) {
+      alert('Por favor, realiza la firma antes de guardar.');
+      return;
+    }
+
+    const dataURL = signaturePad.toDataURL('image/png');
+    fieldSignatures[currentField] = dataURL;
+
+    // Dibujar una marca en el campo firmado
+    fieldsCtx.fillStyle = 'green';
+    fieldsCtx.fillRect(currentField.x, currentField.y, currentField.width, currentField.height);
+
+    closeSignatureModal();
+  }
+
+  async function submitSignature() {
+  const signatures = fieldsData.map(field => ({
+    dataURL: fieldSignatures[field] || null,
+    x: field.x,
+    y: field.y,
+    width: field.width,
+    height: field.height,
+    canvasWidth: pdfCanvas.width, // Agrega las dimensiones del canvas
+    canvasHeight: pdfCanvas.height, // Agrega las dimensiones del canvas
+  }));
+
+  const response = await fetch('/api/submit-signature', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pdfFilePath: pdfPath, signatures }),
+  });
+
+  const data = await response.json();
+  alert('Documento firmado con éxito');
+  window.location.href = data.signedFilePath;
+}
+
+
+  renderPDF(pdfPath);
+</script>
+
+</body>
+</html>

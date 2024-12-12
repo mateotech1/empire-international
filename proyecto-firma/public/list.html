@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lista de Documentos Firmados</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    #searchInput {
+      width: 300px;
+      padding: 10px;
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th, td {
+      padding: 10px;
+      text-align: left;
+      border: 1px solid #ddd;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    #pagination {
+      text-align: center;
+      margin-top: 20px;
+    }
+    #pagination button {
+      padding: 10px 15px;
+      margin: 0 5px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background-color: #f4f4f4;
+      cursor: pointer;
+    }
+    #pagination button:disabled {
+      background-color: #e0e0e0;
+      cursor: not-allowed;
+    }
+    #pagination button.active {
+      background-color: #007bff;
+      color: white;
+    }
+    #backButton {
+      margin-bottom: 20px;
+      padding: 10px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 16px;
+      display: block;
+      width: fit-content;
+      margin: 0 auto;
+    }
+    #backButton:hover {
+      background-color: #0056b3;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Documentos Firmados</h1>
+<a href="index.html" id="backButton">Volver al Inicio</a>
+<input 
+  type="text" 
+  id="searchInput" 
+  placeholder="Buscar documento por nombre..." 
+  oninput="filterPDFs()"
+/>
+<table id="pdfTable">
+  <thead>
+    <tr>
+      <th>Nombre del Documento</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+<div id="pagination"></div>
+
+<script>
+  let currentPage = 1;
+  const rowsPerPage = 10; // Cambia si deseas más elementos por página
+  let totalPages = 1;
+
+  async function fetchPDFs(query = '') {
+    try {
+      const response = await fetch(`/api/list-signed-pdfs?page=${currentPage}&limit=${rowsPerPage}&query=${query}`);
+      if (!response.ok) {
+        throw new Error('Error al obtener la lista de PDFs');
+      }
+
+      const { data, total, page, limit } = await response.json();
+
+      currentPage = page;
+      totalPages = Math.ceil(total / limit);
+
+      renderTable(data);
+      renderPagination();
+    } catch (error) {
+      console.error('Error al obtener la lista de PDFs:', error);
+    }
+  }
+
+  function renderTable(pdfs) {
+    const tableBody = document.querySelector('#pdfTable tbody');
+    tableBody.innerHTML = '';
+
+    if (pdfs.length === 0) {
+      tableBody.innerHTML = '<tr><td colspan="2">No se encontraron documentos</td></tr>';
+      return;
+    }
+
+    pdfs.forEach(pdf => {
+      const row = document.createElement('tr');
+
+      const nameCell = document.createElement('td');
+      nameCell.textContent = pdf.name;
+      row.appendChild(nameCell);
+
+      const actionCell = document.createElement('td');
+      const viewLink = document.createElement('a');
+      viewLink.href = pdf.url;
+      viewLink.target = '_blank';
+      viewLink.textContent = 'Ver';
+      actionCell.appendChild(viewLink);
+      row.appendChild(actionCell);
+
+      tableBody.appendChild(row);
+    });
+  }
+
+  function renderPagination() {
+    const paginationDiv = document.getElementById('pagination');
+    paginationDiv.innerHTML = '';
+
+    const prevButton = document.createElement('button');
+    prevButton.textContent = 'Anterior';
+    prevButton.disabled = currentPage === 1;
+    prevButton.onclick = () => {
+      currentPage -= 1;
+      fetchPDFs(document.getElementById('searchInput').value.trim());
+    };
+    paginationDiv.appendChild(prevButton);
+
+    for (let i = 1; i <= totalPages; i++) {
+      const pageButton = document.createElement('button');
+      pageButton.textContent = i;
+      pageButton.disabled = i === currentPage;
+      pageButton.className = i === currentPage ? 'active' : '';
+      pageButton.onclick = () => {
+        currentPage = i;
+        fetchPDFs(document.getElementById('searchInput').value.trim());
+      };
+      paginationDiv.appendChild(pageButton);
+    }
+
+    const nextButton = document.createElement('button');
+    nextButton.textContent = 'Siguiente';
+    nextButton.disabled = currentPage === totalPages;
+    nextButton.onclick = () => {
+      currentPage += 1;
+      fetchPDFs(document.getElementById('searchInput').value.trim());
+    };
+    paginationDiv.appendChild(nextButton);
+  }
+
+  function filterPDFs() {
+    const query = document.getElementById('searchInput').value.trim();
+    currentPage = 1;
+    fetchPDFs(query);
+  }
+
+  document.getElementById('searchInput').addEventListener('input', (event) => {
+    if (!event.target.value.trim()) {
+      currentPage = 1;
+      fetchPDFs('');
+    }
+  });
+
+  // Cargar la primera página al iniciar
+  fetchPDFs();
+</script>
+
+</body>
+</html>

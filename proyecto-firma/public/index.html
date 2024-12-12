@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subir y Asignar Cuadros de Firma</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      text-align: center;
+    }
+    h1 {
+      color: #333;
+    }
+    input[type="file"] {
+      margin: 20px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 10px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      margin: 20px auto;
+      display: block;
+    }
+    #linkContainer {
+      margin-top: 20px;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script> <!-- Asegúrate de incluir esto -->
+</head>
+<body>
+<script>
+  // Verificación de autenticación al cargar la página
+  document.addEventListener("DOMContentLoaded", () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/login.html"; // Redirige a la página de inicio de sesión si no hay token
+    }
+  });
+</script>
+
+<h1>Subir y Asignar Cuadros de Firma</h1>
+
+<input type="file" id="fileInput" accept="application/pdf">
+<button onclick="uploadFile()">Subir PDF y Generar Enlace</button>
+<button onclick="openList()">Ver PDFs Firmados</button>
+
+<canvas id="pdfCanvas" width="800" height="1100"></canvas>
+<div id="linkContainer"></div>
+
+<script>
+  let pdfDoc = null;
+  let fields = [];
+  const canvas = document.getElementById('pdfCanvas');
+  const ctx = canvas.getContext('2d');
+
+  document.getElementById('fileInput').addEventListener('change', loadPDF);
+
+  async function loadPDF(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const typedArray = new Uint8Array(e.target.result);
+      pdfDoc = await pdfjsLib.getDocument(typedArray).promise;
+      const page = await pdfDoc.getPage(1);
+      const viewport = page.getViewport({ scale: 1.5 });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: ctx, viewport: viewport });
+      console.log('PDF cargado: ancho=', viewport.width, 'alto=', viewport.height);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  canvas.addEventListener('click', (e) => {
+    if (!pdfDoc) {
+      alert('Primero carga un PDF');
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const field = { x, y, width: 150, height: 50 };
+    fields.push(field);
+    drawField(field);
+    console.log('Campos actuales:', fields);
+  });
+
+  function drawField(field) {
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(field.x, field.y, field.width, field.height);
+  }
+
+  async function uploadFile() {
+    const fileInput = document.getElementById('fileInput').files[0];
+    if (!fileInput) {
+      alert('Por favor selecciona un archivo PDF');
+      return;
+    }
+
+    if (fields.length === 0) {
+      alert('Agrega al menos un campo de firma haciendo clic en el PDF');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput);
+    formData.append('fields', JSON.stringify(fields));
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch('/api/generate-link', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`, // Enviar el token en el encabezado
+      },
+      body: formData
+    });
+
+    const data = await response.json();
+    console.log('Enlace recibido:', data.link);
+    document.getElementById('linkContainer').innerHTML = `Enlace generado: <a href="${data.link}" target="_blank">${data.link}</a>`;
+  }
+
+  function openList() {
+    window.location.href = 'list.html';
+  }
+</script>
+
+</body>
+</html>
